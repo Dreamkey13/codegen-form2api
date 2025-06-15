@@ -1,0 +1,114 @@
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+import json
+
+app = FastAPI(title="{{ form_name }} API")
+
+# Data Models
+{% for field in fields %}
+class {{ field.name|capitalize }}Field(BaseModel):
+    value: {{ field.type }}
+    {% if field.validation %}
+    {% for rule in field.validation %}
+    @validator('value')
+    def validate_{{ rule.name }}(cls, v):
+        {% if rule.type == 'required' %}
+        if not v:
+            raise ValueError('{{ rule.message }}')
+        {% elif rule.type == 'min' %}
+        if v < {{ rule.value }}:
+            raise ValueError('{{ rule.message }}')
+        {% elif rule.type == 'max' %}
+        if v > {{ rule.value }}:
+            raise ValueError('{{ rule.message }}')
+        {% elif rule.type == 'pattern' %}
+        import re
+        if not re.match(r'{{ rule.value }}', str(v)):
+            raise ValueError('{{ rule.message }}')
+        {% endif %}
+        return v
+    {% endfor %}
+    {% endif %}
+{% endfor %}
+
+class {{ form_name }}Form(BaseModel):
+    {% for field in fields %}
+    {{ field.name }}: {{ field.type }} = Field(
+        {% if field.required %}...{% else %}None{% endif %},
+        description="{{ field.description }}"
+    )
+    {% endfor %}
+
+    class Config:
+        schema_extra = {
+            "example": {
+                {% for field in fields %}
+                "{{ field.name }}": {{ field.example }}{% if not loop.last %},{% endif %}
+                {% endfor %}
+            }
+        }
+
+# Routes
+@app.post("/{{ form_name|lower }}/submit")
+async def submit_form(form: {{ form_name }}Form):
+    try:
+        # Process form submission
+        result = {
+            "status": "success",
+            "message": "Form submitted successfully",
+            "data": form.dict()
+        }
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/{{ form_name|lower }}/fields")
+async def get_form_fields():
+    return {
+        "fields": [
+            {% for field in fields %}
+            {
+                "name": "{{ field.name }}",
+                "type": "{{ field.type }}",
+                "required": {{ field.required|lower }},
+                "validation": {{ field.validation|tojson }},
+                "attributes": {{ field.attributes|tojson }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]
+    }
+
+# Event Handlers
+{% for event in event_handlers %}
+@app.post("/{{ form_name|lower }}/events/{{ event.name }}")
+async def handle_{{ event.name }}(data: Dict[str, Any]):
+    try:
+        # Handle event
+        result = {
+            "status": "success",
+            "message": "Event handled successfully",
+            "data": data
+        }
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+{% endfor %}
+
+# Error Handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    return {
+        "status": "error",
+        "message": exc.detail,
+        "code": exc.status_code
+    }
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    return {
+        "status": "error",
+        "message": str(exc),
+        "code": 500
+    } 

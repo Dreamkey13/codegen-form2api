@@ -1,0 +1,167 @@
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field, validator
+import re
+from datetime import datetime
+
+class ValidationError(Exception):
+    """Base class for validation errors."""
+    def __init__(self, message: str, field: str):
+        self.message = message
+        self.field = field
+        super().__init__(self.message)
+
+class ValidationRule:
+    """Base class for validation rules."""
+    def __init__(self, field: str, message: str):
+        self.field = field
+        self.message = message
+
+    def validate(self, value: Any) -> bool:
+        """Validate the value."""
+        raise NotImplementedError
+
+class RequiredRule(ValidationRule):
+    """Rule for required fields."""
+    def validate(self, value: Any) -> bool:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            raise ValidationError(self.message, self.field)
+        return True
+
+class MinLengthRule(ValidationRule):
+    """Rule for minimum length."""
+    def __init__(self, field: str, message: str, min_length: int):
+        super().__init__(field, message)
+        self.min_length = min_length
+
+    def validate(self, value: Any) -> bool:
+        if value and len(str(value)) < self.min_length:
+            raise ValidationError(self.message, self.field)
+        return True
+
+class MaxLengthRule(ValidationRule):
+    """Rule for maximum length."""
+    def __init__(self, field: str, message: str, max_length: int):
+        super().__init__(field, message)
+        self.max_length = max_length
+
+    def validate(self, value: Any) -> bool:
+        if value and len(str(value)) > self.max_length:
+            raise ValidationError(self.message, self.field)
+        return True
+
+class PatternRule(ValidationRule):
+    """Rule for pattern matching."""
+    def __init__(self, field: str, message: str, pattern: str):
+        super().__init__(field, message)
+        self.pattern = re.compile(pattern)
+
+    def validate(self, value: Any) -> bool:
+        if value and not self.pattern.match(str(value)):
+            raise ValidationError(self.message, self.field)
+        return True
+
+class MinValueRule(ValidationRule):
+    """Rule for minimum value."""
+    def __init__(self, field: str, message: str, min_value: float):
+        super().__init__(field, message)
+        self.min_value = min_value
+
+    def validate(self, value: Any) -> bool:
+        if value is not None and float(value) < self.min_value:
+            raise ValidationError(self.message, self.field)
+        return True
+
+class MaxValueRule(ValidationRule):
+    """Rule for maximum value."""
+    def __init__(self, field: str, message: str, max_value: float):
+        super().__init__(field, message)
+        self.max_value = max_value
+
+    def validate(self, value: Any) -> bool:
+        if value is not None and float(value) > self.max_value:
+            raise ValidationError(self.message, self.field)
+        return True
+
+class EmailRule(ValidationRule):
+    """Rule for email validation."""
+    def __init__(self, field: str, message: str):
+        super().__init__(field, message)
+        self.pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+    def validate(self, value: Any) -> bool:
+        if value and not self.pattern.match(str(value)):
+            raise ValidationError(self.message, self.field)
+        return True
+
+class DateRule(ValidationRule):
+    """Rule for date validation."""
+    def __init__(self, field: str, message: str, format: str = "%Y-%m-%d"):
+        super().__init__(field, message)
+        self.format = format
+
+    def validate(self, value: Any) -> bool:
+        if value:
+            try:
+                datetime.strptime(str(value), self.format)
+            except ValueError:
+                raise ValidationError(self.message, self.field)
+        return True
+
+class Validator:
+    """Main validator class."""
+    def __init__(self):
+        self.rules: Dict[str, List[ValidationRule]] = {}
+
+    def add_rule(self, field: str, rule: ValidationRule):
+        """Add a validation rule for a field."""
+        if field not in self.rules:
+            self.rules[field] = []
+        self.rules[field].append(rule)
+
+    def validate(self, data: Dict[str, Any]) -> Dict[str, List[str]]:
+        """Validate all fields in the data."""
+        errors: Dict[str, List[str]] = {}
+        
+        for field, rules in self.rules.items():
+            value = data.get(field)
+            for rule in rules:
+                try:
+                    rule.validate(value)
+                except ValidationError as e:
+                    if field not in errors:
+                        errors[field] = []
+                    errors[field].append(e.message)
+        
+        return errors
+
+# Create validator instance
+validator = Validator()
+
+# Add validation rules
+{% for field in fields %}
+{% if field.validation %}
+{% for rule in field.validation %}
+{% if rule.type == 'required' %}
+validator.add_rule("{{ field.name }}", RequiredRule("{{ field.name }}", "{{ rule.message }}"))
+{% elif rule.type == 'min_length' %}
+validator.add_rule("{{ field.name }}", MinLengthRule("{{ field.name }}", "{{ rule.message }}", {{ rule.value }}))
+{% elif rule.type == 'max_length' %}
+validator.add_rule("{{ field.name }}", MaxLengthRule("{{ field.name }}", "{{ rule.message }}", {{ rule.value }}))
+{% elif rule.type == 'pattern' %}
+validator.add_rule("{{ field.name }}", PatternRule("{{ field.name }}", "{{ rule.message }}", "{{ rule.value }}"))
+{% elif rule.type == 'min' %}
+validator.add_rule("{{ field.name }}", MinValueRule("{{ field.name }}", "{{ rule.message }}", {{ rule.value }}))
+{% elif rule.type == 'max' %}
+validator.add_rule("{{ field.name }}", MaxValueRule("{{ field.name }}", "{{ rule.message }}", {{ rule.value }}))
+{% elif rule.type == 'email' %}
+validator.add_rule("{{ field.name }}", EmailRule("{{ field.name }}", "{{ rule.message }}"))
+{% elif rule.type == 'date' %}
+validator.add_rule("{{ field.name }}", DateRule("{{ field.name }}", "{{ rule.message }}", "{{ rule.format }}"))
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+def validate_form_data(data: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Validate form data using the configured rules."""
+    return validator.validate(data) 

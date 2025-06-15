@@ -1,0 +1,141 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+
+namespace {{ form_name }}Api.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class {{ form_name }}Controller : ControllerBase
+    {
+        private readonly ILogger<{{ form_name }}Controller> _logger;
+
+        public {{ form_name }}Controller(ILogger<{{ form_name }}Controller> logger)
+        {
+            _logger = logger;
+        }
+
+        // Models
+        {% for field in fields %}
+        public class {{ field.name|capitalize }}Field
+        {
+            [Required(ErrorMessage = "{{ field.validation[0].message if field.validation else field.name|capitalize + ' is required' }}")]
+            public {{ field.type|capitalize }} Value { get; set; }
+        }
+        {% endfor %}
+
+        public class {{ form_name }}Form
+        {
+            {% for field in fields %}
+            [Required(ErrorMessage = "{{ field.validation[0].message if field.validation else field.name|capitalize + ' is required' }}")]
+            {% if field.validation %}
+            {% for rule in field.validation %}
+            {% if rule.type == 'min_length' %}
+            [MinLength({{ rule.value }}, ErrorMessage = "{{ rule.message }}")]
+            {% elif rule.type == 'max_length' %}
+            [MaxLength({{ rule.value }}, ErrorMessage = "{{ rule.message }}")]
+            {% elif rule.type == 'pattern' %}
+            [RegularExpression(@"{{ rule.value }}", ErrorMessage = "{{ rule.message }}")]
+            {% elif rule.type == 'min' %}
+            [Range({{ rule.value }}, double.MaxValue, ErrorMessage = "{{ rule.message }}")]
+            {% elif rule.type == 'max' %}
+            [Range(double.MinValue, {{ rule.value }}, ErrorMessage = "{{ rule.message }}")]
+            {% elif rule.type == 'email' %}
+            [EmailAddress(ErrorMessage = "{{ rule.message }}")]
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+            public {{ field.type|capitalize }} {{ field.name|capitalize }} { get; set; }
+            {% endfor %}
+        }
+
+        // Routes
+        [HttpPost("submit")]
+        public async Task<IActionResult> SubmitForm([FromBody] {{ form_name }}Form form)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                // Process form submission
+                var result = new
+                {
+                    Status = "success",
+                    Message = "Form submitted successfully",
+                    Data = form
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing form submission");
+                return StatusCode(500, new { Status = "error", Message = ex.Message });
+            }
+        }
+
+        [HttpGet("fields")]
+        public IActionResult GetFormFields()
+        {
+            var fields = new List<object>
+            {
+                {% for field in fields %}
+                new {
+                    Name = "{{ field.name }}",
+                    Type = "{{ field.type }}",
+                    Required = {{ field.required|lower }},
+                    Validation = new[] {
+                        {% for rule in field.validation %}
+                        new {
+                            Type = "{{ rule.type }}",
+                            {% if rule.value is defined %}
+                            Value = {{ rule.value }},
+                            {% endif %}
+                            Message = "{{ rule.message }}"
+                        }{% if not loop.last %},{% endif %}
+                        {% endfor %}
+                    },
+                    Attributes = new {
+                        {% for attr, value in field.attributes.items() %}
+                        {{ attr|capitalize }} = "{{ value }}"{% if not loop.last %},{% endif %}
+                        {% endfor %}
+                    }
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            };
+
+            return Ok(new { Fields = fields });
+        }
+
+        // Event Handlers
+        {% for event in event_handlers %}
+        [HttpPost("events/{{ event.name }}")]
+        public async Task<IActionResult> Handle{{ event.name|capitalize }}([FromBody] Dictionary<string, object> data)
+        {
+            try
+            {
+                // Handle event
+                var result = new
+                {
+                    Status = "success",
+                    Message = "Event handled successfully",
+                    Data = data
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling {{ event.name }} event");
+                return StatusCode(500, new { Status = "error", Message = ex.Message });
+            }
+        }
+        {% endfor %}
+    }
+} 
