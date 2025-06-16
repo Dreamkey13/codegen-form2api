@@ -1,0 +1,66 @@
+from typing import Optional, List
+from datetime import datetime, date
+from pydantic import BaseModel, Field, EmailStr, validator
+from enum import Enum
+
+{% for field in fields %}
+{% if field.type == 'string' and field.validation.get('email') %}
+class {{ field.name|capitalize }}Enum(str, Enum):
+    {% for option in field.validation.get('options', []) %}
+    {{ option|upper }} = "{{ option }}"
+    {% endfor %}
+{% endif %}
+{% endfor %}
+
+class FormModel(BaseModel):
+    {% for field in fields %}
+    {% if field.type == 'string' and field.validation.get('email') %}
+    {{ field.name }}: EmailStr{% if not field.required %}: Optional[EmailStr] = None{% endif %}
+    {% elif field.type == 'string' and field.validation.get('options') %}
+    {{ field.name }}: {{ field.name|capitalize }}Enum{% if not field.required %}: Optional[{{ field.name|capitalize }}Enum] = None{% endif %}
+    {% elif field.type == 'number' %}
+    {{ field.name }}: float{% if not field.required %}: Optional[float] = None{% endif %}
+    {% elif field.type == 'boolean' %}
+    {{ field.name }}: bool{% if not field.required %}: Optional[bool] = None{% endif %}
+    {% elif field.type == 'date' %}
+    {{ field.name }}: date{% if not field.required %}: Optional[date] = None{% endif %}
+    {% elif field.type == 'datetime' %}
+    {{ field.name }}: datetime{% if not field.required %}: Optional[datetime] = None{% endif %}
+    {% else %}
+    {{ field.name }}: str{% if not field.required %}: Optional[str] = None{% endif %}
+    {% endif %}
+    {% if field.attributes.get('min') or field.attributes.get('max') %}
+    {% if field.type == 'number' %}
+    {% if field.attributes.get('min') %}
+    @validator('{{ field.name }}')
+    def validate_{{ field.name }}_min(cls, v):
+        if v is not None and v < {{ field.attributes.get('min') }}:
+            raise ValueError(f'{{ field.name }} must be greater than or equal to {{ field.attributes.get('min') }}')
+        return v
+    {% endif %}
+    {% if field.attributes.get('max') %}
+    @validator('{{ field.name }}')
+    def validate_{{ field.name }}_max(cls, v):
+        if v is not None and v > {{ field.attributes.get('max') }}:
+            raise ValueError(f'{{ field.name }} must be less than or equal to {{ field.attributes.get('max') }}')
+        return v
+    {% endif %}
+    {% endif %}
+    {% endif %}
+    {% if field.validation.get('pattern') %}
+    @validator('{{ field.name }}')
+    def validate_{{ field.name }}_pattern(cls, v):
+        if v is not None and not re.match(r'{{ field.validation.get('pattern') }}', v):
+            raise ValueError(f'{{ field.name }} must match pattern {{ field.validation.get('pattern') }}')
+        return v
+    {% endif %}
+    {% endfor %}
+
+    class Config:
+        schema_extra = {
+            "example": {
+                {% for field in fields %}
+                "{{ field.name }}": {% if field.type == 'string' %}"example"{% elif field.type == 'number' %}0.0{% elif field.type == 'boolean' %}False{% elif field.type == 'date' %}"2024-01-01"{% elif field.type == 'datetime' %}"2024-01-01T00:00:00"{% else %}"example"{% endif %}{% if not loop.last %},{% endif %}
+                {% endfor %}
+            }
+        } 

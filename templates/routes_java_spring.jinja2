@@ -1,0 +1,71 @@
+package com.example.controllers;
+
+import com.example.models.FormModel;
+import com.example.services.FormService;
+import com.example.validators.FormValidator;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import javax.validation.Valid;
+import java.util.List;
+
+@RestController
+@RequestMapping("/{{ form_name|lower }}")
+public class FormController {
+
+    @Autowired
+    private FormService formService;
+
+    @Autowired
+    private FormValidator formValidator;
+
+    @PostMapping
+    public ResponseEntity<FormModel> createForm(@Valid @RequestBody FormModel formData) {
+        try {
+            formValidator.validate(formData);
+            FormModel savedForm = formService.save(formData);
+            return ResponseEntity.ok(savedForm);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping
+    public ResponseEntity<List<FormModel>> getAllForms() {
+        List<FormModel> forms = formService.findAll();
+        return ResponseEntity.ok(forms);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<FormModel> getForm(@PathVariable Long id) {
+        return formService.findById(id)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<FormModel> updateForm(@PathVariable Long id, @Valid @RequestBody FormModel formData) {
+        try {
+            formValidator.validate(formData);
+            return formService.findById(id)
+                .map(existingForm -> {
+                    formData.setId(id);
+                    FormModel updatedForm = formService.save(formData);
+                    return ResponseEntity.ok(updatedForm);
+                })
+                .orElse(ResponseEntity.notFound().build());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteForm(@PathVariable Long id) {
+        return formService.findById(id)
+            .map(form -> {
+                formService.deleteById(id);
+                return ResponseEntity.ok().<Void>build();
+            })
+            .orElse(ResponseEntity.notFound().build());
+    }
+} 

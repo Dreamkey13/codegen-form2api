@@ -1,0 +1,76 @@
+package com.example.models;
+
+import javax.persistence.*;
+import javax.validation.constraints.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
+{% for field in fields %}
+{% if field.type == 'string' and field.validation.get('options') %}
+public enum {{ field.name|capitalize }}Enum {
+    {% for option in field.validation.get('options', []) %}
+    {{ option|upper }}("{{ option }}"){% if not loop.last %},{% endif %}
+    {% endfor %};
+
+    private final String value;
+
+    {{ field.name|capitalize }}Enum(String value) {
+        this.value = value;
+    }
+
+    public String getValue() {
+        return value;
+    }
+}
+{% endif %}
+{% endfor %}
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "{{ form_name|lower }}")
+public class FormModel {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    {% for field in fields %}
+    {% if field.type == 'string' and field.validation.get('email') %}
+    @Email(message = "Invalid email format")
+    @Column(nullable = {{ field.required|lower }})
+    private String {{ field.name }};
+    {% elif field.type == 'string' and field.validation.get('options') %}
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = {{ field.required|lower }})
+    private {{ field.name|capitalize }}Enum {{ field.name }};
+    {% elif field.type == 'number' %}
+    @Column(nullable = {{ field.required|lower }})
+    {% if field.attributes.get('min') %}
+    @Min(value = {{ field.attributes.get('min') }}, message = "Value must be greater than or equal to {{ field.attributes.get('min') }}")
+    {% endif %}
+    {% if field.attributes.get('max') %}
+    @Max(value = {{ field.attributes.get('max') }}, message = "Value must be less than or equal to {{ field.attributes.get('max') }}")
+    {% endif %}
+    private Double {{ field.name }};
+    {% elif field.type == 'boolean' %}
+    @Column(nullable = {{ field.required|lower }})
+    private Boolean {{ field.name }};
+    {% elif field.type == 'date' %}
+    @Column(nullable = {{ field.required|lower }})
+    private LocalDate {{ field.name }};
+    {% elif field.type == 'datetime' %}
+    @Column(nullable = {{ field.required|lower }})
+    private LocalDateTime {{ field.name }};
+    {% else %}
+    @Column(nullable = {{ field.required|lower }})
+    {% if field.validation.get('pattern') %}
+    @Pattern(regexp = "{{ field.validation.get('pattern') }}", message = "Invalid format")
+    {% endif %}
+    private String {{ field.name }};
+    {% endif %}
+    {% endfor %}
+} 

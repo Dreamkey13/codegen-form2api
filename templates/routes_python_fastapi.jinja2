@@ -1,0 +1,55 @@
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List
+from .models import FormModel
+from .validators import validate_form_data
+from .event_handlers import handle_form_events
+
+router = APIRouter(prefix="/{{ form_name|lower }}", tags=["{{ form_name|capitalize }}"])
+
+@router.post("/", response_model=FormModel)
+async def create_form(form_data: FormModel):
+    """Create a new form entry."""
+    try:
+        # Validate form data
+        await validate_form_data(form_data)
+        
+        # Handle form events
+        await handle_form_events(form_data)
+        
+        # TODO: Add your database operations here
+        return form_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/", response_model=List[FormModel])
+async def get_forms():
+    """Get all form entries."""
+    # TODO: Add your database operations here
+    return []
+
+@router.get("/{form_id}", response_model=FormModel)
+async def get_form(form_id: int):
+    """Get a specific form entry by ID."""
+    # TODO: Add your database operations here
+    raise HTTPException(status_code=404, detail="Form not found")
+
+@router.put("/{form_id}", response_model=FormModel)
+async def update_form(form_id: int, form_data: FormModel):
+    """Update a form entry."""
+    try:
+        # Validate form data
+        await validate_form_data(form_data)
+        
+        # Handle form events
+        await handle_form_events(form_data)
+        
+        # TODO: Add your database operations here
+        return form_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.delete("/{form_id}")
+async def delete_form(form_id: int):
+    """Delete a form entry."""
+    # TODO: Add your database operations here
+    return {"message": "Form deleted successfully"} 

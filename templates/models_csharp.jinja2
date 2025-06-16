@@ -1,0 +1,66 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace YourNamespace.Models
+{
+    {% for field in fields %}
+    {% if field.type == 'string' and field.validation.get('options') %}
+    public enum {{ field.name|capitalize }}Enum
+    {
+        {% for option in field.validation.get('options', []) %}
+        {{ option|capitalize }}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    }
+    {% endif %}
+    {% endfor %}
+
+    public class FormModel
+    {
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
+
+        {% for field in fields %}
+        {% if field.type == 'string' and field.validation.get('email') %}
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string {{ field.name|capitalize }} { get; set; }
+        {% elif field.type == 'string' and field.validation.get('options') %}
+        [Required(ErrorMessage = "{{ field.name|capitalize }} is required")]
+        public {{ field.name|capitalize }}Enum {{ field.name|capitalize }} { get; set; }
+        {% elif field.type == 'number' %}
+        {% if field.required %}
+        [Required(ErrorMessage = "{{ field.name|capitalize }} is required")]
+        {% endif %}
+        {% if field.attributes.get('min') %}
+        [Range({{ field.attributes.get('min') }}, {{ field.attributes.get('max', 'double.MaxValue') }}, ErrorMessage = "{{ field.name|capitalize }} must be between {{ field.attributes.get('min') }} and {{ field.attributes.get('max', 'maximum') }}")]
+        {% endif %}
+        public double {{ field.name|capitalize }} { get; set; }
+        {% elif field.type == 'boolean' %}
+        {% if field.required %}
+        [Required(ErrorMessage = "{{ field.name|capitalize }} is required")]
+        {% endif %}
+        public bool {{ field.name|capitalize }} { get; set; }
+        {% elif field.type == 'date' %}
+        {% if field.required %}
+        [Required(ErrorMessage = "{{ field.name|capitalize }} is required")]
+        {% endif %}
+        public DateTime {{ field.name|capitalize }} { get; set; }
+        {% elif field.type == 'datetime' %}
+        {% if field.required %}
+        [Required(ErrorMessage = "{{ field.name|capitalize }} is required")]
+        {% endif %}
+        public DateTime {{ field.name|capitalize }} { get; set; }
+        {% else %}
+        {% if field.required %}
+        [Required(ErrorMessage = "{{ field.name|capitalize }} is required")]
+        {% endif %}
+        {% if field.validation.get('pattern') %}
+        [RegularExpression(@"{{ field.validation.get('pattern') }}", ErrorMessage = "Invalid format")]
+        {% endif %}
+        public string {{ field.name|capitalize }} { get; set; }
+        {% endif %}
+        {% endfor %}
+    }
+} 
