@@ -155,14 +155,9 @@ class CodeGenerationTool(BaseTool):
                 "name": element.get("name"),
                 "type": self._map_input_type(element.get("type")),
                 "required": element.get("required", False),
-                "validation": element.get("validation", {}),
-                "events": element.get("events", {}),
-                "attributes": {
-                    "placeholder": element.get("placeholder"),
-                    "min": element.get("min"),
-                    "max": element.get("max"),
-                    "pattern": element.get("pattern")
-                }
+                "validation": element.get("validation", []),
+                "events": element.get("events", []),
+                "attributes": element.get("attributes", {})
             }
             fields.append(field)
         return fields
