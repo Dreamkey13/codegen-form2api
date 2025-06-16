@@ -1,0 +1,59 @@
+package com.example.validators;
+
+import com.example.models.FormModel;
+import org.springframework.stereotype.Component;
+import org.springframework.validation.Errors;
+import org.springframework.validation.ValidationUtils;
+import org.springframework.validation.Validator;
+import java.util.regex.Pattern;
+
+@Component
+public class FormValidator implements Validator {
+
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
+
+    @Override
+    public boolean supports(Class<?> clazz) {
+        return FormModel.class.equals(clazz);
+    }
+
+    @Override
+    public void validate(Object target, Errors errors) {
+        FormModel form = (FormModel) target;
+
+        {% for field in fields %}
+        {% if field.validation %}
+        // Validate {{ field.name }}
+        {% if field.required %}
+        ValidationUtils.rejectIfEmptyOrWhitespace(errors, "{{ field.name }}", "field.required", "{{ field.name|capitalize }} is required");
+        {% endif %}
+
+        {% if field.validation.email %}
+        if (form.get{{ field.name|capitalize }}() != null && !EMAIL_PATTERN.matcher(form.get{{ field.name|capitalize }}()).matches()) {
+            errors.rejectValue("{{ field.name }}", "field.email", "Invalid email format");
+        }
+        {% endif %}
+
+        {% if field.validation.pattern %}
+        if (form.get{{ field.name|capitalize }}() != null && !Pattern.matches("{{ field.validation.pattern }}", form.get{{ field.name|capitalize }}().toString())) {
+            errors.rejectValue("{{ field.name }}", "field.pattern", "Invalid format");
+        }
+        {% endif %}
+
+        {% if field.type == 'number' %}
+        {% if field.validation.min %}
+        if (form.get{{ field.name|capitalize }}() != null && form.get{{ field.name|capitalize }}() < {{ field.validation.min }}) {
+            errors.rejectValue("{{ field.name }}", "field.min", "Value must be greater than or equal to {{ field.validation.min }}");
+        }
+        {% endif %}
+
+        {% if field.validation.max %}
+        if (form.get{{ field.name|capitalize }}() != null && form.get{{ field.name|capitalize }}() > {{ field.validation.max }}) {
+            errors.rejectValue("{{ field.name }}", "field.max", "Value must be less than or equal to {{ field.validation.max }}");
+        }
+        {% endif %}
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+    }
+} 

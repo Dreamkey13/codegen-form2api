@@ -1,0 +1,102 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+using System.Text.RegularExpressions;
+using YourNamespace.Models;
+
+namespace YourNamespace.Validators
+{
+    public class FormValidator : IValidator<FormModel>
+    {
+        private static readonly Regex EmailRegex = new Regex(@"^[^\s@]+@[^\s@]+\.[^\s@]+$");
+
+        public ValidationResult Validate(FormModel model)
+        {
+            var errors = new List<ValidationError>();
+
+            {% for field in fields %}
+            {% if field.validation %}
+            // Validate {{ field.name }}
+            {% if field.required %}
+            if (model.{{ field.name|capitalize }} == null)
+            {
+                errors.Add(new ValidationError
+                {
+                    Field = "{{ field.name }}",
+                    Message = "{{ field.name|capitalize }} is required"
+                });
+            }
+            {% endif %}
+
+            {% if field.validation.email %}
+            if (model.{{ field.name|capitalize }} != null && !EmailRegex.IsMatch(model.{{ field.name|capitalize }}))
+            {
+                errors.Add(new ValidationError
+                {
+                    Field = "{{ field.name }}",
+                    Message = "Invalid email format"
+                });
+            }
+            {% endif %}
+
+            {% if field.validation.pattern %}
+            if (model.{{ field.name|capitalize }} != null && !Regex.IsMatch(model.{{ field.name|capitalize }}.ToString(), @"{{ field.validation.pattern }}"))
+            {
+                errors.Add(new ValidationError
+                {
+                    Field = "{{ field.name }}",
+                    Message = "Invalid format"
+                });
+            }
+            {% endif %}
+
+            {% if field.type == 'number' %}
+            {% if field.validation.min %}
+            if (model.{{ field.name|capitalize }} != null && model.{{ field.name|capitalize }} < {{ field.validation.min }})
+            {
+                errors.Add(new ValidationError
+                {
+                    Field = "{{ field.name }}",
+                    Message = $"Value must be greater than or equal to {{ field.validation.min }}"
+                });
+            }
+            {% endif %}
+
+            {% if field.validation.max %}
+            if (model.{{ field.name|capitalize }} != null && model.{{ field.name|capitalize }} > {{ field.validation.max }})
+            {
+                errors.Add(new ValidationError
+                {
+                    Field = "{{ field.name }}",
+                    Message = $"Value must be less than or equal to {{ field.validation.max }}"
+                });
+            }
+            {% endif %}
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+
+            return new ValidationResult
+            {
+                IsValid = !errors.Any(),
+                Errors = errors
+            };
+        }
+    }
+
+    public class ValidationResult
+    {
+        public bool IsValid { get; set; }
+        public List<ValidationError> Errors { get; set; } = new List<ValidationError>();
+    }
+
+    public class ValidationError
+    {
+        public string Field { get; set; }
+        public string Message { get; set; }
+    }
+
+    public interface IValidator<T>
+    {
+        ValidationResult Validate(T model);
+    }
+} 

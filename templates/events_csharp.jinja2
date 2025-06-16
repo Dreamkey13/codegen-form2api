@@ -1,0 +1,125 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using YourNamespace.Models;
+
+namespace YourNamespace.Events
+{
+    public class FormEventManager
+    {
+        private readonly ILogger<FormEventManager> _logger;
+        private readonly Dictionary<string, List<Func<FormEvent, Task>>> _eventHandlers;
+        private readonly List<FormEvent> _eventHistory;
+
+        public FormEventManager(ILogger<FormEventManager> logger)
+        {
+            _logger = logger;
+            _eventHandlers = new Dictionary<string, List<Func<FormEvent, Task>>>();
+            _eventHistory = new List<FormEvent>();
+        }
+
+        public void RegisterHandler(string eventType, Func<FormEvent, Task> handler)
+        {
+            if (!_eventHandlers.ContainsKey(eventType))
+            {
+                _eventHandlers[eventType] = new List<Func<FormEvent, Task>>();
+            }
+            _eventHandlers[eventType].Add(handler);
+        }
+
+        public void UnregisterHandler(string eventType, Func<FormEvent, Task> handler)
+        {
+            if (_eventHandlers.ContainsKey(eventType))
+            {
+                _eventHandlers[eventType].Remove(handler);
+            }
+        }
+
+        public async Task HandleFormSubmitAsync(FormModel form)
+        {
+            var @event = new FormEvent
+            {
+                Type = "form_submit",
+                Form = form,
+                Timestamp = DateTime.UtcNow
+            };
+            await PublishEventAsync(@event);
+        }
+
+        {% for field in fields %}
+        {% if field.events %}
+        public async Task Handle{{ field.name|capitalize }}ChangeAsync(FormModel form, object newValue)
+        {
+            var @event = new FormEvent
+            {
+                Type = "{{ field.name }}_change",
+                Form = form,
+                Timestamp = DateTime.UtcNow,
+                Data = new Dictionary<string, object>
+                {
+                    { "field", "{{ field.name }}" },
+                    { "value", newValue }
+                }
+            };
+            await PublishEventAsync(@event);
+        }
+        {% endif %}
+        {% endfor %}
+
+        private async Task PublishEventAsync(FormEvent @event)
+        {
+            _eventHistory.Add(@event);
+            _logger.LogInformation("Form event: {EventType} at {Timestamp}", @event.Type, @event.Timestamp);
+
+            if (_eventHandlers.ContainsKey(@event.Type))
+            {
+                var handlers = _eventHandlers[@event.Type];
+                foreach (var handler in handlers)
+                {
+                    try
+                    {
+                        await handler(@event);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error handling event {EventType}", @event.Type);
+                    }
+                }
+            }
+        }
+
+        public IReadOnlyList<FormEvent> GetEventHistory()
+        {
+            return _eventHistory.AsReadOnly();
+        }
+    }
+
+    public class FormEvent
+    {
+        public string Type { get; set; }
+        public FormModel Form { get; set; }
+        public DateTime Timestamp { get; set; }
+        public Dictionary<string, object> Data { get; set; }
+    }
+
+    public class FormEventLogger
+    {
+        private readonly ILogger<FormEventLogger> _logger;
+
+        public FormEventLogger(ILogger<FormEventLogger> logger)
+        {
+            _logger = logger;
+        }
+
+        public async Task HandleEventAsync(FormEvent @event)
+        {
+            _logger.LogInformation("Form event: {EventType} at {Timestamp}", @event.Type, @event.Timestamp);
+            if (@event.Data != null)
+            {
+                _logger.LogInformation("Event data: {@EventData}", @event.Data);
+            }
+            await Task.CompletedTask;
+        }
+    }
+} 

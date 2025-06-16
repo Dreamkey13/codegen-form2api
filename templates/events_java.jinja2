@@ -1,0 +1,115 @@
+package com.example.events;
+
+import com.example.models.FormModel;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.ApplicationEventPublisherAware;
+import org.springframework.stereotype.Component;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Component
+public class FormEventManager implements ApplicationEventPublisherAware {
+    private ApplicationEventPublisher publisher;
+    private final Map<String, List<FormEventHandler>> eventHandlers = new ConcurrentHashMap<>();
+    private final List<FormEvent> eventHistory = new ArrayList<>();
+
+    @Override
+    public void setApplicationEventPublisher(ApplicationEventPublisher publisher) {
+        this.publisher = publisher;
+    }
+
+    public void registerHandler(String eventType, FormEventHandler handler) {
+        eventHandlers.computeIfAbsent(eventType, k -> new ArrayList<>()).add(handler);
+    }
+
+    public void unregisterHandler(String eventType, FormEventHandler handler) {
+        List<FormEventHandler> handlers = eventHandlers.get(eventType);
+        if (handlers != null) {
+            handlers.remove(handler);
+        }
+    }
+
+    public void handleFormSubmit(FormModel form) {
+        FormEvent event = new FormEvent("form_submit", form, LocalDateTime.now());
+        publishEvent(event);
+    }
+
+    {% for field in fields %}
+    {% if field.events %}
+    public void handle{{ field.name|capitalize }}Change(FormModel form, Object newValue) {
+        FormEvent event = new FormEvent("{{ field.name }}_change", form, LocalDateTime.now());
+        event.setData(Map.of("field", "{{ field.name }}", "value", newValue));
+        publishEvent(event);
+    }
+    {% endif %}
+    {% endfor %}
+
+    private void publishEvent(FormEvent event) {
+        eventHistory.add(event);
+        publisher.publishEvent(event);
+        
+        List<FormEventHandler> handlers = eventHandlers.get(event.getType());
+        if (handlers != null) {
+            handlers.forEach(handler -> handler.handleEvent(event));
+        }
+    }
+
+    public List<FormEvent> getEventHistory() {
+        return new ArrayList<>(eventHistory);
+    }
+}
+
+@Component
+public class FormEvent {
+    private final String type;
+    private final FormModel form;
+    private final LocalDateTime timestamp;
+    private Map<String, Object> data;
+
+    public FormEvent(String type, FormModel form, LocalDateTime timestamp) {
+        this.type = type;
+        this.form = form;
+        this.timestamp = timestamp;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public FormModel getForm() {
+        return form;
+    }
+
+    public LocalDateTime getTimestamp() {
+        return timestamp;
+    }
+
+    public Map<String, Object> getData() {
+        return data;
+    }
+
+    public void setData(Map<String, Object> data) {
+        this.data = data;
+    }
+}
+
+@FunctionalInterface
+public interface FormEventHandler {
+    void handleEvent(FormEvent event);
+}
+
+@Component
+public class FormEventLogger implements FormEventHandler {
+    private static final Logger logger = LoggerFactory.getLogger(FormEventLogger.class);
+
+    @Override
+    public void handleEvent(FormEvent event) {
+        logger.info("Form event: {} at {}", event.getType(), event.getTimestamp());
+        if (event.getData() != null) {
+            logger.info("Event data: {}", event.getData());
+        }
+    }
+} 
