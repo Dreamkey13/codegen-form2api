@@ -1,0 +1,108 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+
+namespace FormApi.Exceptions
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class ErrorController : ControllerBase
+    {
+        private readonly ILogger<ErrorController> _logger;
+
+        public ErrorController(ILogger<ErrorController> logger)
+        {
+            _logger = logger;
+        }
+
+        [Route("error")]
+        public IActionResult Error()
+        {
+            var context = HttpContext.Features.Get<IExceptionHandlerFeature>();
+            var exception = context?.Error;
+
+            if (exception is ValidationException validationEx)
+            {
+                _logger.LogWarning("Validation error: {Message} for field: {Field}", 
+                    validationEx.Message, validationEx.Field);
+                return BadRequest(new ErrorResponse
+                {
+                    Status = StatusCodes.Status400BadRequest,
+                    Error = "Validation Error",
+                    Message = validationEx.Message,
+                    Field = validationEx.Field,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+
+            if (exception is FormException formEx)
+            {
+                _logger.LogError("Form error: {Message} with code: {Code}", 
+                    formEx.Message, formEx.Code);
+                return BadRequest(new ErrorResponse
+                {
+                    Status = StatusCodes.Status400BadRequest,
+                    Error = "Form Error",
+                    Message = formEx.Message,
+                    Code = formEx.Code,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+
+            _logger.LogError(exception, "An unexpected error occurred");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ErrorResponse
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Error = "Internal Server Error",
+                Message = "An unexpected error occurred",
+                Timestamp = DateTime.UtcNow
+            });
+        }
+    }
+
+    public class ErrorResponse
+    {
+        public int Status { get; set; }
+        public string Error { get; set; }
+        public string Message { get; set; }
+        public string Field { get; set; }
+        public string Code { get; set; }
+        public DateTime Timestamp { get; set; }
+        public IDictionary<string, string[]> ValidationErrors { get; set; }
+    }
+
+    public class ValidationException : Exception
+    {
+        public string Field { get; }
+
+        public ValidationException(string message, string field) : base(message)
+        {
+            Field = field;
+        }
+    }
+
+    public class FormException : Exception
+    {
+        public string Code { get; }
+
+        public FormException(string message, string code) : base(message)
+        {
+            Code = code;
+        }
+    }
+
+    public static class ModelStateExtensions
+    {
+        public static IDictionary<string, string[]> ToDictionary(this ModelStateDictionary modelState)
+        {
+            return modelState.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+            );
+        }
+    }
+} 

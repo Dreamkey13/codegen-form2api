@@ -1,0 +1,113 @@
+package com.example.events;
+
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.ApplicationEventPublisherAware;
+import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Component
+public class FormEventManager implements ApplicationEventPublisherAware {
+    private static final Logger logger = LoggerFactory.getLogger(FormEventManager.class);
+    private ApplicationEventPublisher publisher;
+    private final Map<String, List<FormEventHandler>> eventHandlers = new ConcurrentHashMap<>();
+    private final List<FormEvent> eventHistory = Collections.synchronizedList(new ArrayList<>());
+
+    @Override
+    public void setApplicationEventPublisher(ApplicationEventPublisher publisher) {
+        this.publisher = publisher;
+    }
+
+    public void registerHandler(String eventType, FormEventHandler handler) {
+        eventHandlers.computeIfAbsent(eventType, k -> new ArrayList<>()).add(handler);
+        logger.info("Registered handler for event type: {}", eventType);
+    }
+
+    public void unregisterHandler(String eventType, FormEventHandler handler) {
+        List<FormEventHandler> handlers = eventHandlers.get(eventType);
+        if (handlers != null) {
+            handlers.remove(handler);
+            logger.info("Unregistered handler for event type: {}", eventType);
+        }
+    }
+
+    public void publishEvent(FormEvent event) {
+        try {
+            publisher.publishEvent(event);
+            eventHistory.add(event);
+            logger.info("Published event: {} with type: {}", event.getId(), event.getType());
+        } catch (Exception e) {
+            logger.error("Error publishing event: {}", e.getMessage(), e);
+            throw new EventPublishingException("Failed to publish event", e);
+        }
+    }
+
+    public void handleFormSubmission(Object formData) {
+        FormEvent event = new FormEvent(
+            UUID.randomUUID().toString(),
+            "FORM_SUBMISSION",
+            formData,
+            LocalDateTime.now()
+        );
+        publishEvent(event);
+    }
+
+    public void handleFieldChange(String fieldName, Object oldValue, Object newValue) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("fieldName", fieldName);
+        data.put("oldValue", oldValue);
+        data.put("newValue", newValue);
+
+        FormEvent event = new FormEvent(
+            UUID.randomUUID().toString(),
+            "FIELD_CHANGE",
+            data,
+            LocalDateTime.now()
+        );
+        publishEvent(event);
+    }
+
+    public List<FormEvent> getEventHistory() {
+        return new ArrayList<>(eventHistory);
+    }
+
+    public List<FormEvent> getEventHistoryByType(String eventType) {
+        return eventHistory.stream()
+            .filter(event -> event.getType().equals(eventType))
+            .toList();
+    }
+}
+
+class FormEvent {
+    private final String id;
+    private final String type;
+    private final Object data;
+    private final LocalDateTime timestamp;
+
+    public FormEvent(String id, String type, Object data, LocalDateTime timestamp) {
+        this.id = id;
+        this.type = type;
+        this.data = data;
+        this.timestamp = timestamp;
+    }
+
+    // Getters
+    public String getId() { return id; }
+    public String getType() { return type; }
+    public Object getData() { return data; }
+    public LocalDateTime getTimestamp() { return timestamp; }
+}
+
+@FunctionalInterface
+interface FormEventHandler {
+    void handle(FormEvent event);
+}
+
+class EventPublishingException extends RuntimeException {
+    public EventPublishingException(String message, Throwable cause) {
+        super(message, cause);
+    }
+} 

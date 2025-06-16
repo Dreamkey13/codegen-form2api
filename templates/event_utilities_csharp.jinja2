@@ -1,0 +1,127 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Extensions.Logging;
+
+namespace FormApi.Events
+{
+    public class FormEventManager
+    {
+        private readonly ILogger<FormEventManager> _logger;
+        private readonly ConcurrentDictionary<string, List<Action<FormEvent>>> _eventHandlers;
+        private readonly List<FormEvent> _eventHistory;
+
+        public FormEventManager(ILogger<FormEventManager> logger)
+        {
+            _logger = logger;
+            _eventHandlers = new ConcurrentDictionary<string, List<Action<FormEvent>>>();
+            _eventHistory = new List<FormEvent>();
+        }
+
+        public void RegisterHandler(string eventType, Action<FormEvent> handler)
+        {
+            _eventHandlers.AddOrUpdate(
+                eventType,
+                new List<Action<FormEvent>> { handler },
+                (_, handlers) =>
+                {
+                    handlers.Add(handler);
+                    return handlers;
+                }
+            );
+            _logger.LogInformation("Registered handler for event type: {EventType}", eventType);
+        }
+
+        public void UnregisterHandler(string eventType, Action<FormEvent> handler)
+        {
+            if (_eventHandlers.TryGetValue(eventType, out var handlers))
+            {
+                handlers.Remove(handler);
+                _logger.LogInformation("Unregistered handler for event type: {EventType}", eventType);
+            }
+        }
+
+        public void PublishEvent(FormEvent @event)
+        {
+            try
+            {
+                if (_eventHandlers.TryGetValue(@event.Type, out var handlers))
+                {
+                    foreach (var handler in handlers)
+                    {
+                        handler(@event);
+                    }
+                }
+                _eventHistory.Add(@event);
+                _logger.LogInformation("Published event: {EventId} with type: {EventType}", 
+                    @event.Id, @event.Type);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error publishing event: {Message}", ex.Message);
+                throw new EventPublishingException("Failed to publish event", ex);
+            }
+        }
+
+        public void HandleFormSubmission(object formData)
+        {
+            var @event = new FormEvent
+            {
+                Id = Guid.NewGuid().ToString(),
+                Type = "FORM_SUBMISSION",
+                Data = formData,
+                Timestamp = DateTime.UtcNow
+            };
+            PublishEvent(@event);
+        }
+
+        public void HandleFieldChange(string fieldName, object oldValue, object newValue)
+        {
+            var data = new Dictionary<string, object>
+            {
+                ["fieldName"] = fieldName,
+                ["oldValue"] = oldValue,
+                ["newValue"] = newValue
+            };
+
+            var @event = new FormEvent
+            {
+                Id = Guid.NewGuid().ToString(),
+                Type = "FIELD_CHANGE",
+                Data = data,
+                Timestamp = DateTime.UtcNow
+            };
+            PublishEvent(@event);
+        }
+
+        public IReadOnlyList<FormEvent> GetEventHistory()
+        {
+            return _eventHistory.AsReadOnly();
+        }
+
+        public IReadOnlyList<FormEvent> GetEventHistoryByType(string eventType)
+        {
+            return _eventHistory
+                .Where(e => e.Type == eventType)
+                .ToList()
+                .AsReadOnly();
+        }
+    }
+
+    public class FormEvent
+    {
+        public string Id { get; set; }
+        public string Type { get; set; }
+        public object Data { get; set; }
+        public DateTime Timestamp { get; set; }
+    }
+
+    public class EventPublishingException : Exception
+    {
+        public EventPublishingException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+        }
+    }
+} 
